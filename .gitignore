@@ -1,2 +1,4 @@
 __pycache__/
 *.pyc
+# 真实部署配置永不入库（全桥只有模板 config/bridge.conf.example 进仓库）
+bridge.conf

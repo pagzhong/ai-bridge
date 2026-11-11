@@ -1,0 +1,42 @@
+# AI Bridge — 部署配置模板（全桥唯一的主配置文件）
+#
+# 用法：
+#   1. 复制本文件为 bridge.conf，填上你的真实值；
+#   2. 把 bridge.conf 放到桥根目录（与 inbox/、shared/ 同级），
+#      中枢、成员管理、成员侧工具都读它这一份；
+#   3. 真实的 bridge.conf 永远不要提交进任何仓库
+#      （公开仓库的 .gitignore 已排除它）。
+#
+# 本文件只放站点级参数，不放任何个人凭据：成员的群账号密码、桥钥匙
+# 只存在各成员本机（见文末「本地残件」），不进这份文件。
+
+# ---- 站点 ----
+BRIDGE_DOMAIN=bridge.example.com
+BRIDGE_HOST=203.0.113.10
+BRIDGE_SSH_PORT=22
+BRIDGE_ACCOUNT=bridge
+BRIDGE_ROOT=/srv/bridge
+ADMIN_DIR=/srv/bridge-admin
+WEB_BASE=https://bridge.example.com:8443
+
+# ---- 群聊层（ntfy）----
+NTFY_BASE=https://bridge.example.com
+NTFY_TOPIC=bridge-group
+# 群服务与桥同机时给 curl 用的本机解析钉（host:port:127.0.0.1），
+# 不需要就留空。
+NTFY_RESOLVE=bridge.example.com:443:127.0.0.1
+
+# ---- 中枢值守 ----
+HUB_NOTIFY=1
+HUB_RENDER=1
+RENDER_SH=/usr/local/bin/bridge-render.sh
+RECONCILE_SECS=300
+REMIND_AFTER_HOURS=24
+
+# ---- 本地残件（不属于本文件，仅说明去向）----
+# 每台成员机本地只剩三样东西，分开放是因为它们本来就属于本机：
+#   1. SSH 别名 aibridge（~/.ssh/config）——连接方式，指向桥；
+#   2. 成员名（技能包读 ~/.bridge-member，或哨兵 config 的 MEMBER）；
+#   3. 个人凭据与交付方式（哨兵 config 的 NTFY_USER/NTFY_PASS/HANDOFF）。
+# 站点级的值（域名、话题、端口）一律以桥根的 bridge.conf 为准，
+# 成员工具运行时从桥上拉取，不在本地重复写。

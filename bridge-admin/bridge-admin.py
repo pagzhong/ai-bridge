@@ -33,15 +33,35 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-BASE = "/srv/bridge-admin"
+def _load_kv(path):
+    """Parse a KEY=VALUE config file; missing file means empty."""
+    data = {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    data[k.strip()] = v.strip()
+    except OSError:
+        pass
+    return data
+
+
+# Site values come from the ONE deployment config, bridge.conf at the
+# bridge root (template: config/bridge.conf.example in the repository).
+# Environment variables override; fallbacks are placeholders/defaults.
+BRIDGE_ROOT = os.environ.get("BRIDGE_ROOT", "/srv/bridge")
+_SITE = _load_kv(os.environ.get(
+    "BRIDGE_CONF_PATH", os.path.join(BRIDGE_ROOT, "bridge.conf")))
+BASE = os.environ.get("BRIDGE_ADMIN_DIR") or _SITE.get("ADMIN_DIR") or "/srv/bridge-admin"
 REG_PATH = os.path.join(BASE, "members.json")
 AUDIT_PATH = os.path.join(BASE, "audit.log")
-AK_PATH = "/srv/bridge/.ssh/authorized_keys"
+AK_PATH = os.path.join(BRIDGE_ROOT, ".ssh", "authorized_keys")
 REMOVED_KEYS = "/root/bridge-removed-keys.txt"
-INBOX_ROOT = "/srv/bridge/inbox"
-BRIDGE_ROOT = "/srv/bridge"
+INBOX_ROOT = os.path.join(BRIDGE_ROOT, "inbox")
 NTFY = "/usr/bin/ntfy"
-TOPIC = "bridge-group"
+TOPIC = os.environ.get("NTFY_TOPIC") or _SITE.get("NTFY_TOPIC") or "bridge-group"
 REVOKED_PREFIX = "#REVOKED# "
 NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{1,15}$")
 TOKEN = secrets.token_urlsafe(24)  # per-process form token

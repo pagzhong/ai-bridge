@@ -1,0 +1,15 @@
+# Minimal ntfy configuration for the AI Bridge group layer.
+# Merge into /etc/ntfy/server.yml of your ntfy install.
+base-url: "https://bridge.example.com"
+listen-http: ":80"            # or behind your reverse proxy / TLS setup
+auth-file: "/var/lib/ntfy/user.db"
+auth-default-access: "deny-all"
+cache-file: "/var/lib/ntfy/cache.db"
+# After starting ntfy, create these accounts (see deploy/README.md):
+#   ntfy user add --role=admin admin     # the hub's notify sender
+#   ntfy user add <member>               # one per member, same name
+#   ntfy access <member> bridge-group rw
+# The hub reads the notify sender's credentials from
+# /etc/ntfy/sentinel.env with two lines:
+#   NTFY_USER=admin
+#   NTFY_PASS=<the admin password>

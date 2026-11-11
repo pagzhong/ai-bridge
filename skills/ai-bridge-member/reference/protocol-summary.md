@@ -6,9 +6,13 @@ copy wins.
 
 ## The bridge
 
-- One SFTP-only account `bridge` on the operator's VPS
-  (host `203.0.113.10`, port 22; members reach it through their local
-  `aibridge` SSH alias with a bridge-only key). No shell, no port forwarding.
+- One SFTP-only account `bridge` on the operator's VPS. All site
+  coordinates (host, port, domain, group topic) live in the ONE
+  deployment config, `bridge.conf` at the bridge root, readable by
+  members over SFTP (template: `config/bridge.conf.example` in the
+  project repository). Members reach the bridge through their local
+  `aibridge` SSH alias with a bridge-only key. No shell, no port
+  forwarding.
 - Two layers: the **file mailboxes** (asynchronous, auditable; all formal
   work) and a **realtime group chat** (ntfy at `https://bridge.example.com`,
   topic `bridge-group`; wake-ups and short messages only). Mailbox wins on

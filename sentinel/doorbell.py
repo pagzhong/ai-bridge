@@ -9,8 +9,9 @@
 # 配置:环境变量,或 $SENTINEL_HOME/config(KEY=VALUE,文件优先,与
 # sentinel.py 共用同一份)。用到的键:
 #   MEMBER          成员名(必填,决定听谁的 @;与 sentinel.py 共用同一键)
-#   NTFY_BASE       默认 https://bridge.example.com
-#   NTFY_TOPIC      默认 bridge-group
+#   NTFY_BASE / NTFY_TOPIC  站点值不在本机配置：运行时从桥根的
+#                   bridge.conf（全桥唯一主配置）经 SFTP 拉取并缓存；
+#                   拉不到时才用本地同名键兜底
 #   NTFY_USER       你自己的 ntfy 账号(群是鉴权的,没有就匿名试,通常会被拒)
 #   NTFY_PASS       你的 ntfy 密码(只存本机 config,权限 600,不要外传)
 #   DOORBELL_CMD    触发时执行的命令(可选;默认跑同目录的 sentinel.py 一轮)
@@ -47,15 +48,60 @@ def log(msg):
     print(time.strftime("%Y-%m-%d %H:%M:%S"), msg, flush=True)
 
 
+def parse_kv_text(text):
+    data = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, v = line.split("=", 1)
+            data[k.strip()] = v.strip()
+    return data
+
+
+def fetch_site_config(cfg):
+    """Pull the deployment config (bridge.conf) from the bridge root via
+    SFTP and cache it locally. Site values (NTFY_BASE / NTFY_TOPIC) are
+    defined ONLY there — one config file for the whole deployment — so
+    member machines never keep their own copies. Falls back to the
+    cached copy, then to local config keys of the same name."""
+    cache = os.path.join(HOME, "bridge.conf")
+    alias = cfg.get("SSH_ALIAS", "") or cfg.get("BRIDGE_HOST", "") or "aibridge"
+    tmp = cache + ".tmp"
+    try:
+        r = subprocess.run(
+            ["sftp", "-q", "-b", "-", alias],
+            input="get bridge.conf %s\n" % tmp,
+            capture_output=True, text=True, timeout=30,
+        )
+        if r.returncode == 0 and os.path.exists(tmp):
+            os.replace(tmp, cache)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+    if os.path.exists(cache):
+        try:
+            with open(cache, encoding="utf-8") as f:
+                return parse_kv_text(f.read())
+        except OSError:
+            pass
+    return {}
+
+
 def main():
     cfg = load_config()
     member = cfg.get("MEMBER", "") or cfg.get("BRIDGE_MEMBER", "")
     if not member:
         log("MEMBER 未配置,门铃退出(先在 config 里写成员名)")
         return 1
-    base = cfg.get("NTFY_BASE", "https://bridge.example.com").rstrip("/")
-    topic = cfg.get("NTFY_TOPIC", "bridge-group")
+    site = fetch_site_config(cfg)
+    base = (site.get("NTFY_BASE") or cfg.get("NTFY_BASE")
+            or "https://bridge.example.com").rstrip("/")
+    topic = site.get("NTFY_TOPIC") or cfg.get("NTFY_TOPIC") or "bridge-group"
     url = "%s/%s/json" % (base, topic)
+    if site:
+        log("站点配置已从桥根 bridge.conf 读取（话题 %s）" % topic)
     here = os.path.dirname(os.path.abspath(__file__))
     default_cmd = [sys.executable, os.path.join(here, "sentinel.py")]
     cmd_override = cfg.get("DOORBELL_CMD", "")

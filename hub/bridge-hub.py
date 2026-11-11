@@ -20,8 +20,9 @@ Ground rules (from the hub design, 2026-11-10):
   * Two sensing channels: inotify events for speed, plus a full
     reconciliation scan every RECONCILE_SECS that diffs directory vs
     ledger, so anything missed while the hub was down is caught up.
-  * Live behaviour is gated by /srv/bridge-admin/hub.conf
-    ({"notify": bool, "render": bool}); both default to false
+  * Live behaviour is gated by HUB_NOTIFY / HUB_RENDER in the
+    deployment config (bridge.conf at the bridge root); both default
+    to false
     (shadow mode: reconcile + ledger + manifests + logs only).
   * Group notifications reuse the sentinel's ntfy admin account from
     /etc/ntfy/sentinel.env and post direct to 127.0.0.1 via curl
@@ -37,27 +38,54 @@ import sys
 import time
 from datetime import datetime, timezone
 
-BRIDGE_ROOT = "/srv/bridge"
+def _load_kv(path):
+    """Parse a KEY=VALUE config file; missing file means empty."""
+    data = {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    data[k.strip()] = v.strip()
+    except OSError:
+        pass
+    return data
+
+
+# All site values come from the ONE deployment config file, bridge.conf,
+# which lives at the bridge root (template: config/bridge.conf.example in
+# the project repository). Environment variables override it; the built-in
+# fallbacks are documentation placeholders. NTFY_RESOLVE is a curl
+# --resolve pin ("host:port:127.0.0.1") for when ntfy lives on the same
+# machine and public DNS would hairpin; empty disables the pin.
+BRIDGE_ROOT = os.environ.get("BRIDGE_ROOT", "/srv/bridge")
+BRIDGE_CONF_PATH = os.environ.get(
+    "BRIDGE_CONF_PATH", os.path.join(BRIDGE_ROOT, "bridge.conf"))
+SITE = _load_kv(BRIDGE_CONF_PATH)
+
+
+def _site(key, env_key, default):
+    return os.environ.get(env_key) or SITE.get(key) or default
+
+
 INBOX_ROOT = os.path.join(BRIDGE_ROOT, "inbox")
 BROADCAST_DIR = "_broadcast"
 STATUS_DIR = os.path.join(BRIDGE_ROOT, "status")
-ADMIN_DIR = "/srv/bridge-admin"
+ADMIN_DIR = _site("ADMIN_DIR", "BRIDGE_ADMIN_DIR", "/srv/bridge-admin")
 DB_PATH = os.path.join(ADMIN_DIR, "hub.db")
 CONF_PATH = os.path.join(ADMIN_DIR, "hub.conf")
 MEMBERS_PATH = os.path.join(ADMIN_DIR, "members.json")
-RENDER_SH = "/usr/local/bin/bridge-render.sh"
+RENDER_SH = _site("RENDER_SH", "HUB_RENDER_SH", "/usr/local/bin/bridge-render.sh")
 SENTINEL_ENV = "/etc/ntfy/sentinel.env"
-# Site-specific values: set them in the environment of the service
-# (e.g. in the systemd unit) for your own deployment. The defaults below
-# are documentation placeholders. NTFY_RESOLVE is a curl --resolve pin
-# ("host:port:127.0.0.1") used when ntfy lives on the same machine and
-# public DNS would hairpin; leave it empty if you do not need the pin.
-NTFY_URL = os.environ.get("HUB_NTFY_URL", "https://bridge.example.com/bridge-group")
-NTFY_RESOLVE = os.environ.get("HUB_NTFY_RESOLVE", "bridge.example.com:443:127.0.0.1")
-WEB_BASE = os.environ.get("HUB_WEB_BASE", "https://bridge.example.com:8443")
-RECONCILE_SECS = 300
+NTFY_BASE = _site("NTFY_BASE", "HUB_NTFY_BASE", "https://bridge.example.com").rstrip("/")
+NTFY_TOPIC = _site("NTFY_TOPIC", "HUB_NTFY_TOPIC", "bridge-group")
+NTFY_URL = os.environ.get("HUB_NTFY_URL") or (NTFY_BASE + "/" + NTFY_TOPIC)
+NTFY_RESOLVE = _site("NTFY_RESOLVE", "HUB_NTFY_RESOLVE", "")
+WEB_BASE = _site("WEB_BASE", "HUB_WEB_BASE", "https://bridge.example.com:8443").rstrip("/")
+RECONCILE_SECS = int(_site("RECONCILE_SECS", "HUB_RECONCILE_SECS", "300"))
 INOTIFY_DEBOUNCE_SECS = 2
-REMIND_AFTER_HOURS = 24
+REMIND_AFTER_HOURS = int(_site("REMIND_AFTER_HOURS", "HUB_REMIND_AFTER_HOURS", "24"))
 NO_SUBJECT = "（这封信没写主题）"
 HEADER_KEYS = ("id", "from", "to", "created_utc", "type", "reply_to", "subject")
 
@@ -75,8 +103,17 @@ def log(msg):
 
 
 def load_conf():
-    """Live-mode switches; missing/unreadable conf means shadow mode."""
+    """Live-mode switches. Primary source: HUB_NOTIFY / HUB_RENDER in
+    bridge.conf (re-read on every call, so toggles apply without a
+    restart). A legacy hub.conf JSON in the admin dir is honoured when
+    bridge.conf does not set the keys. No config at all means shadow
+    mode (both off)."""
     conf = {"notify": False, "render": False}
+    site = _load_kv(BRIDGE_CONF_PATH)
+    if "HUB_NOTIFY" in site or "HUB_RENDER" in site:
+        conf["notify"] = site.get("HUB_NOTIFY", "").lower() in ("1", "true", "yes")
+        conf["render"] = site.get("HUB_RENDER", "").lower() in ("1", "true", "yes")
+        return conf
     try:
         with open(CONF_PATH, encoding="utf-8") as f:
             data = json.load(f)

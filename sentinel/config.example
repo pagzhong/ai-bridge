@@ -35,7 +35,11 @@ WEBHOOK_URL=http://127.0.0.1:8788/
 # Fill in YOUR OWN ntfy account (the group is authenticated). The password
 # stays in this local file only — keep the file chmod 600, never share it.
 # Installers enable the doorbell service only when NTFY_USER is filled in.
-NTFY_BASE=https://bridge.example.com
-NTFY_TOPIC=bridge-group
+# The site values (NTFY_BASE / NTFY_TOPIC) are NOT configured here: the
+# doorbell fetches them from the deployment's single config file,
+# bridge.conf at the bridge root, and caches it next to this file.
+# The two lines below are only a fallback if the fetch ever fails.
+# NTFY_BASE=https://bridge.example.com
+# NTFY_TOPIC=bridge-group
 NTFY_USER=
 NTFY_PASS=
