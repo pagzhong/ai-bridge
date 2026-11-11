@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Task Scheduler XML template (alternative to install-windows.ps1).
+  Replace the three placeholders, then import with:
+    schtasks /Create /TN BridgeSentinel /XML bridge-sentinel-task.xml
+  (If schtasks rejects the encoding, re-save the file as UTF-16 LE and
+  change the declaration above to UTF-16.)
+  Placeholders:
+    __USER__     your Windows user name (DOMAIN\user or just user)
+    __PYTHONW__  full path to pythonw.exe (or python.exe)
+    __SCRIPT__   full path to sentinel.py, typically
+                 C:\Users\<you>\.bridge-sentinel\sentinel.py
+  Not yet verified on a real Windows machine (2026-11-11).
+-->
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>AI Bridge sentinel: poll the bridge for new letters every minute.</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+    </LogonTrigger>
+    <TimeTrigger>
+      <StartBoundary>2026-01-01T00:00:00</StartBoundary>
+      <Enabled>true</Enabled>
+      <Repetition>
+        <Interval>PT1M</Interval>
+        <Duration>P3650D</Duration>
+        <StopAtDurationEnd>false</StopAtDurationEnd>
+      </Repetition>
+    </TimeTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <UserId>__USER__</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <Enabled>true</Enabled>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>__PYTHONW__</Command>
+      <Arguments>"__SCRIPT__"</Arguments>
+    </Exec>
+  </Actions>
+</Task>

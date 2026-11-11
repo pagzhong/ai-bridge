@@ -1,0 +1,13 @@
+[Unit]
+Description=AI bridge doorbell (run a sentinel cycle when a group notice mentions this member)
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 %h/.bridge-sentinel/doorbell.py
+Environment=SENTINEL_HOME=%h/.bridge-sentinel
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

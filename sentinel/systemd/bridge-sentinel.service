@@ -1,0 +1,7 @@
+[Unit]
+Description=AI Bridge sentinel (one poll cycle)
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/.bridge-sentinel/sentinel.py

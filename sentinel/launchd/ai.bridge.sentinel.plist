@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- launchd template for macOS. install-macos.sh copies this to
+     ~/Library/LaunchAgents/ and substitutes __HOME__ and __INTERVAL__. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.bridge.sentinel</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__PYTHON__</string>
+    <string>__HOME__/.bridge-sentinel/sentinel.py</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StartInterval</key>
+  <integer>__INTERVAL__</integer>
+  <key>StandardOutPath</key>
+  <string>__HOME__/.bridge-sentinel/launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/.bridge-sentinel/launchd.log</string>
+</dict>
+</plist>

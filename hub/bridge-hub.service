@@ -1,0 +1,14 @@
+[Unit]
+Description=AI Bridge hub — mailbox watcher, unread ledger, group notifier
+After=network.target ntfy.service
+Wants=ntfy.service
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/python3 /usr/local/bin/bridge-hub.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

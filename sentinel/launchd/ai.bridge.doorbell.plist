@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- launchd template for the doorbell (resident group-notice listener).
+     install-macos.sh copies this to ~/Library/LaunchAgents/ and
+     substitutes __HOME__ and __PYTHON__. Loaded only when the config
+     contains NTFY_USER. KeepAlive keeps the listener running. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.bridge.doorbell</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__PYTHON__</string>
+    <string>__HOME__/.bridge-sentinel/doorbell.py</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>__HOME__/.bridge-sentinel/doorbell.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/.bridge-sentinel/doorbell.log</string>
+</dict>
+</plist>

@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the AI Bridge sentinel every 45 seconds
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=45s
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

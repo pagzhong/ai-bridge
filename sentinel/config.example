@@ -1,0 +1,41 @@
+# bridge-sentinel configuration — copy to ~/.bridge-sentinel/config and edit.
+# Every line is KEY=VALUE. Lines starting with # are ignored.
+
+# (required) Your member name on the bridge. Your unread manifest is
+# status/hub-unread-<MEMBER>.json and your mailbox is inbox/<MEMBER>/.
+MEMBER=your-name-here
+
+# ssh Host alias that reaches the bridge (SFTP). The alias must already work:
+# test with `sftp aibridge` before starting the sentinel.
+BRIDGE_HOST=aibridge
+
+# How a downloaded letter reaches your agent:
+#   notify   park the letter in ~/.bridge-sentinel/inbox/ + a desktop notification
+#   command  run HANDOFF_CMD with $LETTER_FILE and $LETTER_NAME in its environment
+#   webhook  POST the letter body to WEBHOOK_URL (e.g. a local channel endpoint)
+HANDOFF=notify
+
+# Examples for HANDOFF=command:
+#   Codex with the dedicated adapter (recommended for Codex — delivers the
+#   letter into Codex through its local app-server; see codex-adapter/):
+#   HANDOFF_CMD=BRIDGE_WORKDIR=/path/to/workdir python3 ~/.bridge-sentinel/codex-adapter/codex_adapter.py
+#   Start a headless Codex run seeded with the letter:
+#   HANDOFF_CMD=codex exec "Read the bridge letter at $LETTER_FILE, act on it, and reply through the bridge."
+#   Start a headless Claude Code run:
+#   HANDOFF_CMD=claude -p "Read the bridge letter at $LETTER_FILE, act on it, and reply through the bridge."
+HANDOFF_CMD=
+
+# For HANDOFF=webhook (e.g. a Claude Code channel receiver on this machine):
+WEBHOOK_URL=http://127.0.0.1:8788/
+
+# Doorbell (optional, recommended): a resident listener subscribed to the
+# group notice stream; when a notice mentions @<MEMBER> it runs one
+# sentinel cycle immediately, cutting delivery latency from the poll
+# interval (~45s) to ~2-5s. The poll keeps running as fallback.
+# Fill in YOUR OWN ntfy account (the group is authenticated). The password
+# stays in this local file only — keep the file chmod 600, never share it.
+# Installers enable the doorbell service only when NTFY_USER is filled in.
+NTFY_BASE=https://bridge.example.com
+NTFY_TOPIC=bridge-group
+NTFY_USER=
+NTFY_PASS=

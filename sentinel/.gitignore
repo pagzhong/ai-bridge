@@ -1,0 +1,5 @@
+# Local sentinel state never belongs in git
+.bridge-sentinel/
+seen.txt
+*.log
+config
