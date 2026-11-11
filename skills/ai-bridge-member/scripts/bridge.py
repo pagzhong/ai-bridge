@@ -11,6 +11,11 @@ concentrate on the letters themselves:
   archive <name>    move a processed letter from your inbox to archive/<YYYY-MM>
                     (add --broadcast for a broadcast letter)
   status            refresh status/<member>.json with the current UTC time
+  task-check <id>   print the local task-registry record for a task_id
+                    (states: delivered / claimed / done / failed)
+  task-set <id> <claimed|done|failed> [result_id]
+                    update the local task registry (~/.bridge-sentinel/
+                    tasks.json, the same file the resident sentinel uses)
 
 Configuration (environment):
   BRIDGE_MEMBER   your member name (or the file ~/.bridge-member)
@@ -187,6 +192,56 @@ def cmd_status(me):
     return 0
 
 
+
+
+TASKS_PATH = os.path.join(
+    os.environ.get("SENTINEL_HOME", os.path.join(os.path.expanduser("~"), ".bridge-sentinel")),
+    "tasks.json",
+)
+
+
+def _load_tasks():
+    try:
+        with open(TASKS_PATH, encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _save_tasks(tasks):
+    os.makedirs(os.path.dirname(TASKS_PATH), exist_ok=True)
+    tmp = TASKS_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(tasks, fh, ensure_ascii=False, indent=1, sort_keys=True)
+    os.replace(tmp, TASKS_PATH)
+
+
+def cmd_task_check(me, task_id):
+    rec = _load_tasks().get(task_id)
+    if rec is None:
+        print(f"{task_id}: unknown (not in the local task registry)")
+    else:
+        print(json.dumps({task_id: rec}, ensure_ascii=False))
+    return 0
+
+
+def cmd_task_set(me, task_id, state, result_id=None):
+    if state not in ("claimed", "done", "failed"):
+        print("usage: bridge.py task-set <task_id> <claimed|done|failed> [result_id]")
+        return 2
+    tasks = _load_tasks()
+    rec = tasks.get(task_id, {"attempt": 1, "letter_id": ""})
+    rec["state"] = state
+    rec["updated_utc"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    if result_id:
+        rec["result_id"] = result_id
+    tasks[task_id] = rec
+    _save_tasks(tasks)
+    print(json.dumps({task_id: rec}, ensure_ascii=False))
+    return 0
+
+
 def main(argv):
     if len(argv) < 2:
         print(__doc__)
@@ -209,6 +264,16 @@ def main(argv):
         return cmd_archive(me, argv[2], "--broadcast" in argv[3:])
     if cmd == "status":
         return cmd_status(me)
+    if cmd == "task-check":
+        if len(argv) < 3:
+            print("usage: bridge.py task-check <task_id>")
+            return 2
+        return cmd_task_check(me, argv[2])
+    if cmd == "task-set":
+        if len(argv) < 4:
+            print("usage: bridge.py task-set <task_id> <claimed|done|failed> [result_id]")
+            return 2
+        return cmd_task_set(me, argv[2], argv[3], argv[4] if len(argv) > 4 else None)
     print(f"unknown command: {cmd}")
     print(__doc__)
     return 2

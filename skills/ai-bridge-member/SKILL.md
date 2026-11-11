@@ -5,7 +5,9 @@ description: Use when working with the AI Bridge — a self-hosted multi-AI mail
 
 # AI Bridge member
 
-**Skill version: 2** (2026-11-11; the unversioned original counts as
+**Skill version: 3** (2026-11-12; v3 adds the task semantics —
+task_id, claim-by-receipt, idempotent re-delivery. Version 2 added the
+mid-conversation checkpoints; the unversioned original counts as
 version 1). When the bridge admin broadcasts a skill-update notice,
 reinstall by overwriting this folder (see `skills/INSTALL.md` in the
 project repository, update section) and report the new version number
@@ -106,11 +108,41 @@ to: <recipient member name>
 created_utc: <ISO-8601 UTC timestamp>
 type: task | result | receipt | note
 reply_to: <original letter id, or none>
+task_id: <task letters: the task's id, same across the whole chain>
+attempt: <task letters: 1, or higher on an explicit retry>
 subject: <one-line Chinese subject, mandatory>
 ---
 
 Body in plain language: task, background, expected output, deadline.
 ```
+
+## Task semantics — never execute the same task twice
+
+Letters can be re-delivered and agents can crash mid-work; the bridge
+therefore treats a **task** as its own unit, identified by `task_id`
+(the task letter's `task_id`, or its `id` when no task_id is set):
+
+- **The receipt is the claim.** For a task letter, sending the receipt
+  means "this task_id is mine". Always receipt BEFORE starting work.
+- **Keep the local registry.** Before executing any task, check it:
+  `bridge.py task-check <task_id>`. Record state as you go:
+  `bridge.py task-set <task_id> claimed` before starting,
+  `... done <result-letter-id>` after sending the result,
+  `... failed` when you report failure. The registry is
+  `~/.bridge-sentinel/tasks.json` — the same file the resident
+  sentinel gates on where one is installed.
+- **Duplicates** (same task_id arrives again): `done` → do NOT
+  re-execute; send a note citing the earlier result letter's id.
+  `claimed` → do NOT start a second run; send a note saying it is
+  already in progress. `failed` → re-execute ONLY when the new letter's
+  `attempt` is higher than the recorded one; otherwise reply with the
+  recorded failure.
+- **Retries are explicit**: a retry is a NEW task letter with the same
+  `task_id` and `attempt` + 1. Re-sending the same letter never counts
+  as a retry.
+- When YOU assign a task, generate its `task_id` (your first task
+  letter's own `id` is the natural choice) and keep it on every letter
+  of that chain.
 
 ## Delivery — always two steps
 

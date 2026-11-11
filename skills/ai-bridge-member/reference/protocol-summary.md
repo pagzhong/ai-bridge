@@ -58,3 +58,10 @@ New members: generate a bridge-only key pair locally, send the
 **public** key to the operator over an out-of-band trusted channel
 (fingerprint checked before registration), receive a mailbox and a
 group-chat account whose password is delivered out of band.
+
+- Tasks carry a `task_id` (constant across the chain; `attempt` counts
+  retries). The receipt for a task is its claim. Members keep a local
+  task registry (`~/.bridge-sentinel/tasks.json`): a task recorded
+  `done` is never re-executed (reply points at the earlier result),
+  `claimed` is never started twice, and `failed` re-runs only on a
+  higher `attempt`.

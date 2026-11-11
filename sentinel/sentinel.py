@@ -21,6 +21,14 @@ $SENTINEL_HOME/config (values in the file win). See config.example.
   HANDOFF_CMD   for HANDOFF=command: run with $LETTER_FILE / $LETTER_NAME set
   WEBHOOK_URL   for HANDOFF=webhook: local URL that receives the letter body
 
+Task idempotency: task letters (type: task) are checked against the
+local task registry ($SENTINEL_HOME/tasks.json) before handoff. A task
+whose task_id is already recorded as claimed/done (or failed without a
+higher attempt) is NOT handed off again; the agent receives a short
+DUPLICATE- notice instead, per the protocol's task semantics. Agents
+report execution state back with:
+  sentinel.py task <task_id> <claimed|done|failed> [result_letter_id]
+
 Exit code is 0 even when the bridge is unreachable: a missed cycle is
 retried by the scheduler, never treated as an error worth waking anyone for.
 A lock file prevents overlapping cycles when a handoff runs long.
@@ -41,6 +49,7 @@ INBOX_DIR = os.path.join(SENTINEL_HOME, "inbox")
 SEEN_FILE = os.path.join(SENTINEL_HOME, "seen.txt")
 LOG_FILE = os.path.join(SENTINEL_HOME, "sentinel.log")
 LOCK_FILE = os.path.join(SENTINEL_HOME, "sentinel.lock")
+TASKS_FILE = os.path.join(SENTINEL_HOME, "tasks.json")
 
 
 def load_config():
@@ -141,6 +150,118 @@ def handoff(local_path, name):
             log(f"webhook POST failed for {name}: {exc}")
     else:
         notify("AI Bridge", f"New letter: {name}")
+
+
+
+def parse_header(path):
+    """Read a letter's front-matter block into a dict (best effort)."""
+    hdr = {}
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            text = fh.read(8192)
+    except OSError:
+        return hdr
+    if not text.startswith("---"):
+        return hdr
+    for line in text.splitlines()[1:]:
+        if line.strip() == "---":
+            break
+        if ":" in line:
+            k, v = line.split(":", 1)
+            hdr[k.strip()] = v.strip()
+    return hdr
+
+
+def load_tasks():
+    try:
+        with open(TASKS_FILE, encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_tasks(tasks):
+    tmp = TASKS_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(tasks, fh, ensure_ascii=False, indent=1, sort_keys=True)
+    os.replace(tmp, TASKS_FILE)
+
+
+def _utc_now():
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def task_gate(dest, name):
+    """Idempotency gate for task letters.
+
+    Returns "pass" to hand the letter off normally, or the path of a
+    DUPLICATE- notice file to hand off instead. Registry states follow
+    the protocol: delivered (handed off, no state reported yet),
+    claimed, done, failed. A task re-delivered with a higher attempt
+    after a recorded failure passes; everything else already known is
+    a duplicate.
+    """
+    hdr = parse_header(dest)
+    if hdr.get("type") != "task":
+        return "pass"
+    task_id = hdr.get("task_id") or hdr.get("id") or ""
+    if not task_id:
+        return "pass"
+    try:
+        attempt = int(hdr.get("attempt") or 1)
+    except (TypeError, ValueError):
+        attempt = 1
+    tasks = load_tasks()
+    rec = tasks.get(task_id)
+    if rec is None:
+        tasks[task_id] = {"state": "delivered", "letter_id": hdr.get("id", ""),
+                          "attempt": attempt, "updated_utc": _utc_now()}
+        save_tasks(tasks)
+        return "pass"
+    state = rec.get("state", "delivered")
+    if state == "failed" and attempt > int(rec.get("attempt", 1)):
+        rec.update({"state": "delivered", "attempt": attempt,
+                    "letter_id": hdr.get("id", ""), "updated_utc": _utc_now()})
+        save_tasks(tasks)
+        return "pass"
+    notice = os.path.join(INBOX_DIR, "DUPLICATE-" + name)
+    body = (
+        "---\n"
+        "type: duplicate-task-notice\n"
+        f"task_id: {task_id}\n"
+        f"recorded_state: {state}\n"
+        f"original_letter: {name}\n"
+        f"recorded_result: {rec.get('result_id', '')}\n"
+        "---\n\n"
+        "这封任务信是重复投递：该 task_id 已在本地任务登记中"
+        f"（状态 {state}）。按协议「任务语义」不要重新执行："
+        "done 的回 note 写明原结果信 id；claimed 的回 note 说明已在执行；"
+        "failed 且 attempt 未增加的回 note 附原失败说明。"
+        f"原信全文在本机：{dest}\n"
+    )
+    with open(notice, "w", encoding="utf-8") as fh:
+        fh.write(body)
+    log(f"duplicate task suppressed: {name} (task_id={task_id}, state={state})")
+    return notice
+
+
+def cmd_task(argv):
+    """sentinel.py task <task_id> <claimed|done|failed> [result_letter_id]"""
+    if len(argv) < 4 or argv[3] not in ("claimed", "done", "failed"):
+        print("usage: sentinel.py task <task_id> <claimed|done|failed> [result_letter_id]")
+        return 2
+    task_id, state = argv[2], argv[3]
+    tasks = load_tasks()
+    rec = tasks.get(task_id, {"attempt": 1, "letter_id": ""})
+    rec["state"] = state
+    rec["updated_utc"] = _utc_now()
+    if len(argv) >= 5:
+        rec["result_id"] = argv[4]
+    tasks[task_id] = rec
+    save_tasks(tasks)
+    print(json.dumps({task_id: rec}, ensure_ascii=False))
+    return 0
 
 
 def sftp_get(remote, local):
@@ -244,7 +365,11 @@ def run_cycle():
             with open(SEEN_FILE, "a", encoding="utf-8") as fh:
                 fh.write(name + "\n")
             log(f"new letter: {name} (handoff: {HANDOFF})")
-            handoff(dest, name)
+            gate = task_gate(dest, name)
+            if gate == "pass":
+                handoff(dest, name)
+            else:
+                handoff(gate, os.path.basename(gate))
         else:
             try:
                 os.remove(dest)
@@ -255,4 +380,6 @@ def run_cycle():
 
 
 if __name__ == "__main__":
+    if len(sys.argv) >= 2 and sys.argv[1] == "task":
+        raise SystemExit(cmd_task(sys.argv))
     raise SystemExit(main())
